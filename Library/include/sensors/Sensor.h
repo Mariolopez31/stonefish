@@ -33,7 +33,7 @@
 namespace sf
 {
     //! An enum defining types of sensors.
-    enum class SensorType {JOINT, LINK, VISION, OTHER};
+    enum class SensorType {JOINT, LINK, VISION, OTHER, LIDAR};
     
     struct Renderable;
     

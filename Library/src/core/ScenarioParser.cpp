@@ -35,6 +35,7 @@
 #include "entities/animation/ManualTrajectory.h"
 #include "entities/animation/PWLTrajectory.h"
 #include "entities/animation/CRTrajectory.h"
+
 #include "entities/animation/BSTrajectory.h"
 #include "entities/solids/Box.h"
 #include "entities/solids/Cylinder.h"
@@ -61,8 +62,11 @@
 #include "sensors/scalar/ForceTorque.h"
 #include "sensors/scalar/Profiler.h"
 #include "sensors/scalar/Multibeam.h"
+#include "sensors/scalar/Lidar.h"
 #include "sensors/vision/ColorCamera.h"
 #include "sensors/vision/DepthCamera.h"
+#include <sensors/scalar/LidarGPU.h>
+#include <sensors/scalar/LivoxMid360CPU.h>
 #include "sensors/vision/ThermalCamera.h"
 #include "sensors/vision/OpticalFlowCamera.h"
 #include "sensors/vision/SegmentationCamera.h"
@@ -92,6 +96,7 @@
 #include "utils/SystemUtil.hpp"
 #include "tinyexpr.h"
 #include <sstream>
+#include <iostream>
 
 namespace sf
 {
@@ -2503,7 +2508,7 @@ bool ScenarioParser::ParseActuator(XMLElement* element, Robot* robot)
     return true;
 }
 
-bool ScenarioParser::ParseSensor(XMLElement* element, Robot* robot)
+bool ScenarioParser::ParseSensor(XMLElement* element, Robot* robot) //AQUÍ
 {
     //Parse
     Sensor* sens = ParseSensor(element, robot->getName());
@@ -2530,6 +2535,7 @@ bool ScenarioParser::ParseSensor(XMLElement* element, Robot* robot)
             break;
 
         case SensorType::LINK:
+        case SensorType::LIDAR:
         case SensorType::VISION:
         {
             const char* linkName = nullptr;
@@ -2549,10 +2555,26 @@ bool ScenarioParser::ParseSensor(XMLElement* element, Robot* robot)
                 delete sens;
                 return false;
             }
-            if(sens->getType() == SensorType::LINK)
-                robot->AddLinkSensor((LinkSensor*)sens, robot->getName() + "/" + std::string(linkName), origin);
-            else
-                robot->AddVisionSensor((VisionSensor*)sens, robot->getName() + "/" + std::string(linkName), origin);
+            // if(sens->getType() == SensorType::LINK)
+            //     robot->AddLinkSensor((LinkSensor*)sens, robot->getName() + "/" + std::string(linkName), origin);
+            // else
+            //     robot->AddVisionSensor((VisionSensor*)sens, robot->getName() + "/" + std::string(linkName), origin);
+            std::string fullName = robot->getName() + "/" + std::string(linkName);
+            // -------------------------------
+
+            if(sens->getType() == SensorType::VISION)
+            {
+                robot->AddVisionSensor((VisionSensor*)sens, fullName, origin);
+            }
+            else if(sens->getType() == SensorType::LIDAR) 
+            {
+                // Hacemos el cast a LinkSensor
+                robot->AddLinkSensor((LinkSensor*)sens, fullName, origin); 
+            }
+            else 
+            {
+                robot->AddLinkSensor((LinkSensor*)sens, fullName, origin);
+            }
         }
             break;
 
@@ -3270,7 +3292,7 @@ Sensor* ScenarioParser::ParseSensor(XMLElement* element, const std::string& name
     XMLElement* item;
     
     if(element->QueryStringAttribute("name", &name) != XML_SUCCESS)
-    {
+    {   
         log.Print(MessageType::ERROR, "Sensor name missing (namespace '%s')!", namePrefix.c_str());
         return nullptr;
     }
@@ -4585,6 +4607,107 @@ Sensor* ScenarioParser::ParseSensor(XMLElement* element, const std::string& name
             log.Print(MessageType::WARNING, "Noise of sensor '%s' not defined - using defaults.", sensorName.c_str());
         }
         sens = msis;
+    }
+
+    else if(typeStr == "lidar_gpu")
+    {
+        const tinyxml2::XMLElement* specs = element->FirstChildElement("specs");
+        if(specs == nullptr) {
+            log.Print(MessageType::ERROR, "Specs of sensor '%s' not properly defined!", sensorName.c_str());
+            return nullptr;
+        }
+
+        int hRes = 0, vRes = 0;
+        float fovH = 0.f, fovV = 0.f;
+
+        if (specs->QueryIntAttribute("horizontal_res", &hRes) != XML_SUCCESS ||
+            specs->QueryIntAttribute("vertical_res", &vRes) != XML_SUCCESS ||
+            specs->QueryFloatAttribute("horizontal_fov", &fovH) != XML_SUCCESS ||
+            specs->QueryFloatAttribute("vertical_fov", &fovV) != XML_SUCCESS)
+        {
+            log.Print(MessageType::ERROR, "Missing attributes in specs for '%s'", sensorName.c_str());
+            return nullptr;
+        }
+
+        const tinyxml2::XMLElement* range = element->FirstChildElement("range");
+        float rangeMin = 0.1f, rangeMax = 100.0f;
+        if(range) {
+        range->QueryFloatAttribute("min", &rangeMin);
+        range->QueryFloatAttribute("max", &rangeMax);
+        }
+
+        sens = new sf::LidarGPU(sensorName, (unsigned)hRes, (unsigned)vRes, fovH, fovV, rangeMin, rangeMax, rate);
+    }
+
+    else if(typeStr == "lidar_cpu")
+    {
+        const tinyxml2::XMLElement* specs = element->FirstChildElement("specs");
+        if(specs == nullptr) {
+            log.Print(MessageType::ERROR, "Specs of sensor '%s' not properly defined!", sensorName.c_str());
+            return nullptr;
+        }
+
+        int hRes = 0; 
+        int vRes = 0;
+        float fovH = 0.0f;
+        float fovV = 0.0f;
+
+        if (specs->QueryIntAttribute("horizontal_res", &hRes) != XML_SUCCESS ||
+            specs->QueryIntAttribute("vertical_res", &vRes) != XML_SUCCESS ||
+            specs->QueryFloatAttribute("horizontal_fov", &fovH) != XML_SUCCESS ||
+            specs->QueryFloatAttribute("vertical_fov", &fovV) != XML_SUCCESS) 
+        {
+             log.Print(MessageType::ERROR, "Missing attributes in specs for '%s'", sensorName.c_str());
+             return nullptr;
+        }
+
+
+        const tinyxml2::XMLElement* range = element->FirstChildElement("range");
+        float rangeMin = 0.1f; 
+        float rangeMax = 100.0f;
+        
+        if (range) {
+            range->QueryFloatAttribute("min", &rangeMin);
+            range->QueryFloatAttribute("max", &rangeMax);
+        }
+
+        sens = new Lidar(sensorName, hRes, vRes, fovH, fovV, rangeMin, rangeMax, rate);
+    }
+    else if(typeStr == "livox_mid360_cpu")
+    {
+        const tinyxml2::XMLElement* specs = element->FirstChildElement("specs");
+        if(!specs) { log.Print(MessageType::ERROR, "Specs of sensor '%s' not properly defined!", sensorName.c_str()); return nullptr; }
+
+        int hRes = 312, vRes = 64;
+        float point_rate = 200000.f;
+        float fovH = 360.f;
+        float vmin = -7.f, vmax = 52.f;
+        int lines = 4;
+        int nonrep = 1;
+        int lidar_id = 0;
+
+        specs->QueryIntAttribute("horizontal_res", &hRes);
+        specs->QueryIntAttribute("vertical_res", &vRes);
+        specs->QueryFloatAttribute("point_rate", &point_rate);
+        specs->QueryFloatAttribute("horizontal_fov", &fovH);
+        specs->QueryFloatAttribute("vmin_deg", &vmin);
+        specs->QueryFloatAttribute("vmax_deg", &vmax);
+        specs->QueryIntAttribute("lines", &lines);
+        specs->QueryIntAttribute("non_repetitive", &nonrep);
+        specs->QueryIntAttribute("lidar_id", &lidar_id);
+
+        const tinyxml2::XMLElement* range = element->FirstChildElement("range");
+        float rangeMin = 0.1f, rangeMax = 70.f;
+        if(range) { range->QueryFloatAttribute("min",&rangeMin); range->QueryFloatAttribute("max",&rangeMax); }
+
+        auto* liv = new sf::LivoxMid360CPU(sensorName, (unsigned)hRes, (unsigned)vRes, rangeMin, rangeMax, rate);
+        liv->setFovDeg(fovH, vmin, vmax);
+        liv->setPointRate(point_rate);
+        liv->setLines((uint8_t)lines);
+        liv->setNonRepetitive(nonrep != 0);
+        liv->setLidarId((uint8_t)lidar_id);
+
+        sens = liv;
     }
     else
     {
