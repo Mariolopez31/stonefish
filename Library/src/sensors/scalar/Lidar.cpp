@@ -1,6 +1,6 @@
 #include "sensors/scalar/Lidar.h"
-#include "Stonefish/core/SimulationApp.h"
-#include "Stonefish/core/SimulationManager.h"
+#include "core/SimulationApp.h"
+#include "core/SimulationManager.h"
 #include "btBulletDynamicsCommon.h"
 #include "graphics/OpenGLPipeline.h"
 

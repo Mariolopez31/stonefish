@@ -1,7 +1,7 @@
 #include "sensors/scalar/LidarGPU.h"
 
-#include "Stonefish/core/SimulationApp.h"
-#include "Stonefish/core/SimulationManager.h"
+#include "core/SimulationApp.h"
+#include "core/SimulationManager.h"
 
 #include "core/GraphicalSimulationApp.h"
 #include "graphics/OpenGLPipeline.h"

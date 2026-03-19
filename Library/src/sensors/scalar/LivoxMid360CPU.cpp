@@ -1,7 +1,7 @@
 #include "sensors/scalar/LivoxMid360CPU.h"
 
-#include "Stonefish/core/SimulationApp.h"
-#include "Stonefish/core/SimulationManager.h"
+#include "core/SimulationApp.h"
+#include "core/SimulationManager.h"
 #include "btBulletDynamicsCommon.h"
 
 #include <cmath>
