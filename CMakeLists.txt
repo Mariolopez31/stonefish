@@ -1,6 +1,21 @@
 cmake_minimum_required(VERSION 3.10)
 project(Stonefish VERSION 1.6.0)
 
+# Detect Raspberry-like architectures and skip build there
+set(TARGET_RASPBERRY FALSE)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "armv7|aarch64")
+    set(TARGET_RASPBERRY TRUE)
+endif()
+
+if(TARGET_RASPBERRY)
+    message(WARNING
+        "Package '${PROJECT_NAME}' will NOT be compiled because a Raspberry/ARM "
+        "architecture was detected "
+        "(CMAKE_SYSTEM_PROCESSOR='${CMAKE_SYSTEM_PROCESSOR}')."
+    )
+    return()
+endif()
+
 # Automatic configuration
 configure_file(version.h.in version.h)
 
